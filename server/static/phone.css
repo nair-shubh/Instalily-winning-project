@@ -5,17 +5,23 @@
   --accent: #1f6f8b;
   --warn: #a92323;
   --ok: #165a2d;
+  --armed-color: #14532d;
+  --armed-bg: #dcfce7;
+  --cooldown-color: #92400e;
 }
 
-* {
-  box-sizing: border-box;
-}
+* { box-sizing: border-box; }
 
 body {
   margin: 0;
   background: radial-gradient(circle at top, #ffffff, #edf1e6 65%, #e6ebdf);
   color: var(--fg);
   font-family: "Avenir Next", "Segoe UI", sans-serif;
+  transition: background 0.4s;
+}
+
+body.armed {
+  background: radial-gradient(circle at top, #f0fff4, #dcfce7 65%, #bbf7d0);
 }
 
 .app {
@@ -26,22 +32,51 @@ body {
 
 h1 {
   margin: 4px 0 16px;
-  font-size: 1.2rem;
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -0.3px;
 }
 
+/* ── Camera ── */
 .camera-wrap {
+  position: relative;
   background: var(--card);
   border: 2px solid #d1d7cd;
   border-radius: 14px;
   padding: 8px;
+  overflow: hidden;
 }
 
 video {
   width: 100%;
   border-radius: 10px;
   background: #111;
+  display: block;
 }
 
+.armed-indicator {
+  display: none;
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  background: #16a34a;
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  animation: pulse-badge 1.5s ease-in-out infinite;
+}
+
+body.armed .armed-indicator { display: block; }
+
+@keyframes pulse-badge {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.7; transform: scale(0.95); }
+}
+
+/* ── Metrics ── */
 .metrics {
   margin-top: 12px;
   display: grid;
@@ -49,55 +84,124 @@ video {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.metrics div {
+.metric-card {
   background: var(--card);
   border-radius: 10px;
-  padding: 8px 10px;
+  padding: 8px 12px;
   border: 1px solid #d6ddcb;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  font-size: 0.9rem;
 }
 
-.controls {
+.metric-primary {
+  grid-column: span 2;
+  padding: 14px 16px;
+  font-size: 1.1rem;
+  border: 2px solid var(--accent);
+}
+
+.metric-primary strong {
+  font-size: 2rem;
+  color: var(--accent);
+}
+
+/* ── State colors ── */
+#state.state-idle    { color: #6b7280; }
+#state.state-streaming { color: #1d4ed8; }
+#state.state-baselined { color: #7c3aed; }
+#state.state-armed   { color: var(--armed-color); font-weight: 800; }
+#state.state-cooldown { color: var(--cooldown-color); }
+
+/* ── Primary controls ── */
+.controls-primary {
   margin-top: 12px;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
 
-button {
+.controls-primary button {
   border: 0;
   border-radius: 10px;
-  padding: 12px;
+  padding: 14px;
   color: #fff;
+  font-weight: 700;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.controls-primary button:active { transform: translateY(1px); }
+
+.btn-start    { background: var(--accent); }
+.btn-baseline { background: #7c3aed; }
+.btn-arm      { background: #16a34a; }
+.btn-reset    { background: #6b7280; }
+
+.btn-start:disabled {
+  background: #93c5fd;
+  cursor: default;
+}
+
+/* ── Advanced toggle ── */
+.btn-advanced {
+  margin-top: 10px;
+  width: 100%;
+  border: 1px solid #d6ddcb;
+  border-radius: 10px;
+  padding: 8px;
+  background: transparent;
+  color: #6b7280;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+/* ── Advanced controls ── */
+.controls-advanced {
+  margin-top: 8px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.controls-advanced button {
+  border: 1px solid #d6ddcb;
+  border-radius: 10px;
+  padding: 10px;
+  color: var(--fg);
   font-weight: 600;
-  background: var(--accent);
+  font-size: 0.8rem;
+  background: var(--card);
+  cursor: pointer;
 }
 
-button:active {
-  transform: translateY(1px);
-}
+.controls-advanced button:active { transform: translateY(1px); }
 
+/* ── Alert banner ── */
 .alert {
   margin-top: 14px;
-  padding: 14px;
-  font-size: 1.2rem;
-  font-weight: 700;
-  border-radius: 10px;
+  padding: 18px 16px;
+  font-size: 1.3rem;
+  font-weight: 800;
+  border-radius: 12px;
   background: #ffe1e1;
   color: var(--warn);
   border: 2px solid #f2b4b4;
+  text-align: center;
+  line-height: 1.4;
 }
 
-.hidden {
-  display: none;
+.alert.alert-active {
+  animation: flash-alert 0.5s ease-in-out 2;
 }
 
-.good {
-  color: var(--ok);
+@keyframes flash-alert {
+  0%, 100% { background: #ffe1e1; }
+  50% { background: #fca5a5; }
 }
 
-.bad {
-  color: var(--warn);
-}
+.hidden { display: none; }
+
+.good { color: var(--ok); }
+.bad  { color: var(--warn); }

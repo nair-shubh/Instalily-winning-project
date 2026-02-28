@@ -41,6 +41,10 @@ state_machine = InventoryStateMachine(
     cooldown_sec=settings.cooldown_sec,
 )
 
+# Sample every Nth frame for observation logging to avoid DB bloat
+_OBS_SAMPLE_EVERY = 3
+_frame_counter: int = 0
+
 
 @app.get("/")
 def phone_app() -> FileResponse:
@@ -67,6 +71,23 @@ def health() -> JSONResponse:
 @app.get("/api/events")
 def events(limit: int = 50) -> JSONResponse:
     return JSONResponse({"events": db.recent_events(limit=min(limit, 200))})
+
+
+@app.get("/api/observations")
+def observations(limit: int = 100) -> JSONResponse:
+    return JSONResponse({"observations": db.recent_observations(limit=min(limit, 500))})
+
+
+@app.get("/api/config")
+def config() -> JSONResponse:
+    return JSONResponse(
+        {
+            "tracked_class": settings.chair_class_name,
+            "conf_threshold": settings.conf_threshold,
+            "debounce_k": settings.debounce_k,
+            "cooldown_sec": settings.cooldown_sec,
+        }
+    )
 
 
 def _decode_b64_jpeg(jpeg_b64: str) -> np.ndarray:
@@ -101,7 +122,8 @@ async def _send_status(ws: WebSocket, *, average_conf: float, timestamp_ms: int)
             "type": "status",
             "timestamp_ms": timestamp_ms,
             "state": state_machine.state,
-            "chair_count": state_machine.last_observed_count,
+            "item_count": state_machine.last_observed_count,
+            "chair_count": state_machine.last_observed_count,  # backwards compat
             "baseline_count": state_machine.baseline_count,
             "diff": diff,
             "discrepancy_streak": state_machine.discrepancy_streak,
@@ -146,7 +168,15 @@ async def _handle_command(ws: WebSocket, data: dict[str, Any]) -> None:
 
 @app.websocket("/ws")
 async def ws_endpoint(ws: WebSocket) -> None:
+    global _frame_counter
     await ws.accept()
+
+    # Send config immediately so phone knows what object is being tracked
+    await ws.send_json({
+        "type": "config",
+        "tracked_class": settings.chair_class_name,
+    })
+
     try:
         while True:
             raw = await ws.receive_text()
@@ -172,6 +202,18 @@ async def ws_endpoint(ws: WebSocket) -> None:
                 evaluation = state_machine.evaluate(vision.chair_count)
 
                 await _send_status(ws, average_conf=vision.average_conf, timestamp_ms=timestamp_ms)
+
+                # Log observation sampled every N frames
+                _frame_counter += 1
+                if _frame_counter % _OBS_SAMPLE_EVERY == 0:
+                    db.log_observation(
+                        state=str(evaluation.state),
+                        item_count=vision.chair_count,
+                        baseline_count=evaluation.baseline_count,
+                        diff=evaluation.diff,
+                        avg_conf=vision.average_conf,
+                        streak=evaluation.discrepancy_streak,
+                    )
 
                 if evaluation.should_alert and evaluation.baseline_count is not None:
                     alert_text = agent.generate_alert_text(

@@ -30,6 +30,20 @@ class EventDB:
                 )
                 """
             )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS observations (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ts_utc TEXT NOT NULL,
+                    state TEXT NOT NULL,
+                    item_count INTEGER NOT NULL,
+                    baseline_count INTEGER,
+                    diff INTEGER NOT NULL,
+                    avg_conf REAL NOT NULL,
+                    streak INTEGER NOT NULL
+                )
+                """
+            )
             conn.commit()
 
     def log_event(self, event_type: str, payload: dict[str, Any]) -> None:
@@ -41,6 +55,26 @@ class EventDB:
             )
             conn.commit()
 
+    def log_observation(
+        self,
+        state: str,
+        item_count: int,
+        baseline_count: int | None,
+        diff: int,
+        avg_conf: float,
+        streak: int,
+    ) -> None:
+        ts = datetime.now(timezone.utc).isoformat()
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO observations(ts_utc, state, item_count, baseline_count, diff, avg_conf, streak)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (ts, state, item_count, baseline_count, diff, round(avg_conf, 4), streak),
+            )
+            conn.commit()
+
     def recent_events(self, limit: int = 50) -> list[dict[str, Any]]:
         with self._connect() as conn:
             rows = conn.execute(
@@ -48,14 +82,24 @@ class EventDB:
                 (limit,),
             ).fetchall()
 
-        out = []
-        for row in rows:
-            out.append(
-                {
-                    "id": row["id"],
-                    "ts_utc": row["ts_utc"],
-                    "event_type": row["event_type"],
-                    "payload": json.loads(row["payload_json"]),
-                }
-            )
-        return out
+        return [
+            {
+                "id": row["id"],
+                "ts_utc": row["ts_utc"],
+                "event_type": row["event_type"],
+                "payload": json.loads(row["payload_json"]),
+            }
+            for row in rows
+        ]
+
+    def recent_observations(self, limit: int = 100) -> list[dict[str, Any]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT id, ts_utc, state, item_count, baseline_count, diff, avg_conf, streak
+                FROM observations ORDER BY id DESC LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+
+        return [dict(row) for row in rows]

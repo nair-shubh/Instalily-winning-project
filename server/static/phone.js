@@ -4,7 +4,8 @@ const ctx = canvas.getContext("2d");
 const alertBanner = document.getElementById("alertBanner");
 
 const stateEl = document.getElementById("state");
-const chairCountEl = document.getElementById("chairCount");
+const itemCountEl = document.getElementById("itemCount");
+const itemLabelEl = document.getElementById("itemLabel");
 const baselineCountEl = document.getElementById("baselineCount");
 const diffEl = document.getElementById("diff");
 const avgConfEl = document.getElementById("avgConf");
@@ -12,36 +13,56 @@ const streakEl = document.getElementById("streak");
 const cooldownEl = document.getElementById("cooldown");
 const networkEl = document.getElementById("network");
 
-const connectBtn = document.getElementById("connectBtn");
 const startBtn = document.getElementById("startBtn");
-const stopBtn = document.getElementById("stopBtn");
 const baselineBtn = document.getElementById("baselineBtn");
 const armBtn = document.getElementById("armBtn");
-const disarmBtn = document.getElementById("disarmBtn");
 const resetBtn = document.getElementById("resetBtn");
+const advancedToggle = document.getElementById("advancedToggle");
+const advancedControls = document.getElementById("advancedControls");
+const connectBtn = document.getElementById("connectBtn");
+const stopBtn = document.getElementById("stopBtn");
+const disarmBtn = document.getElementById("disarmBtn");
 
 let ws = null;
 let stream = null;
 let frameTimer = null;
+let wakeLock = null;
+let trackedClass = "Items";
 const fps = 3;
+let frameCount = 0;
 
-function wsUrl() {
-  const proto = location.protocol === "https:" ? "wss" : "ws";
-  return `${proto}://${location.host}/ws`;
+// ── Wake Lock ──────────────────────────────────────────────────────────────────
+async function requestWakeLock() {
+  if ("wakeLock" in navigator) {
+    try {
+      wakeLock = await navigator.wakeLock.request("screen");
+    } catch (_) {}
+  }
 }
 
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && frameTimer) requestWakeLock();
+});
+
+// ── Network status ─────────────────────────────────────────────────────────────
 function setNetwork(text, ok) {
   networkEl.textContent = text;
   networkEl.className = ok ? "good" : "bad";
 }
 
-function showBanner(msg) {
+// ── Alert banner ───────────────────────────────────────────────────────────────
+function showBanner(msg, isAlert = false) {
   alertBanner.textContent = msg;
+  alertBanner.className = isAlert ? "alert alert-active" : "alert";
   alertBanner.classList.remove("hidden");
 }
 
+function hideBanner() {
+  alertBanner.classList.add("hidden");
+}
+
 function speakOrFallback(msg) {
-  showBanner(msg);
+  showBanner(msg, true);
   const synth = window.speechSynthesis;
   if (synth && typeof SpeechSynthesisUtterance !== "undefined") {
     const utter = new SpeechSynthesisUtterance(msg);
@@ -52,8 +73,10 @@ function speakOrFallback(msg) {
   } else if (navigator.vibrate) {
     navigator.vibrate([250, 100, 250]);
   }
+  setTimeout(hideBanner, 8000);
 }
 
+// ── Camera ─────────────────────────────────────────────────────────────────────
 async function initCamera() {
   if (stream) return;
   stream = await navigator.mediaDevices.getUserMedia({
@@ -63,31 +86,47 @@ async function initCamera() {
   video.srcObject = stream;
 }
 
+// ── WebSocket ──────────────────────────────────────────────────────────────────
 function connectWS() {
   if (ws && ws.readyState === WebSocket.OPEN) return;
-  ws = new WebSocket(wsUrl());
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  ws = new WebSocket(`${proto}://${location.host}/ws`);
 
   ws.onopen = () => setNetwork("Connected", true);
-  ws.onclose = () => setNetwork("Disconnected", false);
+  ws.onclose = () => {
+    setNetwork("Disconnected", false);
+    setTimeout(connectWS, 2000);
+  };
   ws.onerror = () => setNetwork("Error", false);
   ws.onmessage = (event) => {
     const msg = JSON.parse(event.data);
     if (msg.type === "status") {
-      stateEl.textContent = msg.state;
-      chairCountEl.textContent = msg.chair_count ?? "-";
+      const state = msg.state;
+      stateEl.textContent = state;
+      stateEl.className = `state-${state.toLowerCase()}`;
+      itemCountEl.textContent = msg.item_count ?? msg.chair_count ?? "-";
       baselineCountEl.textContent = msg.baseline_count ?? "-";
-      diffEl.textContent = msg.diff;
+      diffEl.textContent = msg.diff ?? 0;
       avgConfEl.textContent = Number(msg.average_conf || 0).toFixed(3);
       streakEl.textContent = `${msg.discrepancy_streak}/${msg.k}`;
       cooldownEl.textContent = `${Number(msg.cooldown_remaining_sec || 0).toFixed(1)}s`;
+      if (state === "ARMED") {
+        document.body.classList.add("armed");
+      } else {
+        document.body.classList.remove("armed");
+      }
     } else if (msg.type === "alert") {
       speakOrFallback(msg.message);
+    } else if (msg.type === "config") {
+      trackedClass = msg.tracked_class || "Items";
+      if (itemLabelEl) itemLabelEl.textContent = trackedClass;
     } else if (msg.type === "error") {
       showBanner(`Error: ${msg.message}`);
     }
   };
 }
 
+// ── Streaming ──────────────────────────────────────────────────────────────────
 function sendCommand(command) {
   if (!ws || ws.readyState !== WebSocket.OPEN) return;
   ws.send(JSON.stringify({ type: "command", command }));
@@ -96,47 +135,58 @@ function sendCommand(command) {
 function sendFrame() {
   if (!ws || ws.readyState !== WebSocket.OPEN) return;
   if (!video.videoWidth || !video.videoHeight) return;
-
-  const targetW = 640;
-  const targetH = 360;
-  canvas.width = targetW;
-  canvas.height = targetH;
-  ctx.drawImage(video, 0, 0, targetW, targetH);
-
-  const dataUrl = canvas.toDataURL("image/jpeg", 0.65);
-  const jpegB64 = dataUrl.split(",")[1];
-  ws.send(
-    JSON.stringify({
-      type: "frame",
-      timestamp_ms: Date.now(),
-      jpeg_b64: jpegB64,
-      meta: { w: targetW, h: targetH },
-    })
-  );
+  canvas.width = 640;
+  canvas.height = 360;
+  ctx.drawImage(video, 0, 0, 640, 360);
+  const jpegB64 = canvas.toDataURL("image/jpeg", 0.65).split(",")[1];
+  ws.send(JSON.stringify({
+    type: "frame",
+    timestamp_ms: Date.now(),
+    jpeg_b64: jpegB64,
+    meta: { w: 640, h: 360 },
+  }));
 }
 
 function startStreaming() {
   if (frameTimer) return;
   frameTimer = setInterval(sendFrame, 1000 / fps);
+  requestWakeLock();
+  startBtn.textContent = "Streaming...";
+  startBtn.disabled = true;
 }
 
 function stopStreaming() {
   if (!frameTimer) return;
   clearInterval(frameTimer);
   frameTimer = null;
+  startBtn.textContent = "Start Stream";
+  startBtn.disabled = false;
 }
 
-connectBtn.addEventListener("click", async () => {
+// ── Auto-init on page load ─────────────────────────────────────────────────────
+window.addEventListener("DOMContentLoaded", async () => {
   connectWS();
   try {
     await initCamera();
   } catch (err) {
-    showBanner(`Camera unavailable: ${err.message}. Connect still attempted.`);
+    showBanner(`Camera: ${err.message} — tap Connect to retry`);
   }
 });
+
+// ── Button bindings ────────────────────────────────────────────────────────────
 startBtn.addEventListener("click", startStreaming);
-stopBtn.addEventListener("click", stopStreaming);
-baselineBtn.addEventListener("click", () => sendCommand("set_baseline"));
+baselineBtn.addEventListener("click", () => { sendCommand("set_baseline"); hideBanner(); });
 armBtn.addEventListener("click", () => sendCommand("arm"));
+resetBtn.addEventListener("click", () => { sendCommand("reset"); stopStreaming(); hideBanner(); });
+
+advancedToggle.addEventListener("click", () => {
+  const hidden = advancedControls.classList.toggle("hidden");
+  advancedToggle.textContent = hidden ? "Advanced ▾" : "Advanced ▴";
+});
+
+connectBtn.addEventListener("click", async () => {
+  connectWS();
+  try { await initCamera(); } catch (err) { showBanner(`Camera: ${err.message}`); }
+});
+stopBtn.addEventListener("click", stopStreaming);
 disarmBtn.addEventListener("click", () => sendCommand("disarm"));
-resetBtn.addEventListener("click", () => sendCommand("reset"));
