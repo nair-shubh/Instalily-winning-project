@@ -30,16 +30,23 @@ The script handles everything automatically:
 
 ## Connecting your phone
 
-**Recommended setup:** connect your laptop to your phone's Personal Hotspot.
+> ✅ **Verified working setup:** laptop connected to phone's Personal Hotspot.
+> Public WiFi and corporate networks often block device-to-device traffic — use the hotspot.
 
-1. iPhone → Settings → Personal Hotspot → ON
-2. MacBook → WiFi → select your phone's hotspot
-3. Run `bash scripts/run_server.sh` — it will print the URL, e.g.:
+**Step-by-step:**
+
+1. On your phone → Settings → Personal Hotspot → **turn ON**
+2. On your laptop → WiFi → select **your phone's hotspot name** → connect
+3. Run `bash scripts/run_server.sh` — it prints the exact URL, e.g.:
    ```
    https://10.x.x.x:8000
    ```
-4. Open that URL in Chrome on your phone
-5. Tap **Advanced → Proceed** to accept the self-signed cert (once only)
+4. Open that URL in **Chrome** on your phone
+5. Chrome shows a security warning → tap **Advanced → Proceed to ... (unsafe)** (one-time only, self-signed cert)
+6. Tap **Connect** → allow camera when prompted
+7. You're in
+
+**Important:** the laptop's IP can change if you disconnect and reconnect to the hotspot. If the URL stops working, just re-run `scripts/run_server.sh` — it always prints the current correct URL.
 
 ## Phone workflow
 
