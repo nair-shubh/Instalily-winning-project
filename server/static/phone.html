@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>Inventory Copilot V1</title>
+  <link rel="stylesheet" href="/static/phone.css" />
+</head>
+<body>
+  <main class="app">
+    <h1>Offline Staging Inventory Copilot</h1>
+
+    <section class="camera-wrap">
+      <video id="video" autoplay playsinline muted></video>
+    </section>
+
+    <section class="metrics">
+      <div><span>State</span><strong id="state">IDLE</strong></div>
+      <div><span>Chairs</span><strong id="chairCount">-</strong></div>
+      <div><span>Baseline</span><strong id="baselineCount">-</strong></div>
+      <div><span>Diff</span><strong id="diff">0</strong></div>
+      <div><span>Avg conf</span><strong id="avgConf">0.000</strong></div>
+      <div><span>Streak/K</span><strong id="streak">0/5</strong></div>
+      <div><span>Cooldown</span><strong id="cooldown">0.0s</strong></div>
+      <div><span>Network</span><strong id="network">Disconnected</strong></div>
+    </section>
+
+    <section class="controls">
+      <button id="connectBtn">Connect</button>
+      <button id="startBtn">Start Stream</button>
+      <button id="stopBtn">Stop Stream</button>
+      <button id="baselineBtn">Set Baseline</button>
+      <button id="armBtn">Arm</button>
+      <button id="disarmBtn">Disarm</button>
+      <button id="resetBtn">Reset</button>
+    </section>
+
+    <section id="alertBanner" class="alert hidden" aria-live="assertive"></section>
+  </main>
+
+  <canvas id="captureCanvas" width="640" height="360" hidden></canvas>
+  <script src="/static/phone.js"></script>
+</body>
+</html>
