@@ -6,113 +6,121 @@ V1 demo target:
 - System detects 4 and sends alert text to phone.
 - Phone speaks: "Mr. Richard, one chair was removed."
 
+## Requirements
+
+- Python 3.10+
+- macOS (tested on Apple Silicon)
+- Phone and laptop on the same network (phone hotspot recommended)
+
+## Quickstart
+
+```bash
+git clone https://github.com/nair-shubh/Instalily-winning-project.git
+cd Instalily-winning-project
+bash scripts/run_server.sh
+```
+
+The script handles everything automatically:
+- Creates a Python virtual environment
+- Installs all dependencies
+- Downloads the YOLOv8n model
+- Generates a self-signed TLS certificate (once, reused on future runs)
+- Prints the URL to open on your phone
+- Starts the HTTPS server on port 8000
+
+## Connecting your phone
+
+**Recommended setup:** connect your laptop to your phone's Personal Hotspot.
+
+1. iPhone → Settings → Personal Hotspot → ON
+2. MacBook → WiFi → select your phone's hotspot
+3. Run `bash scripts/run_server.sh` — it will print the URL, e.g.:
+   ```
+   https://10.x.x.x:8000
+   ```
+4. Open that URL in Chrome on your phone
+5. Tap **Advanced → Proceed** to accept the self-signed cert (once only)
+
+## Phone workflow
+
+1. Tap **Connect** — allow camera permission when prompted
+2. Tap **Start Stream** — camera activates, chair count appears
+3. Point at the scene, wait for count to stabilize
+4. Tap **Set Baseline** — locks in current count as reference
+5. Tap **Arm** — system is now watching
+6. Remove or add a chair — after 5 consecutive discrepant frames, the phone speaks the alert
+
 ## What this build includes
+
 - FastAPI server + WebSocket endpoint at `/ws`
 - YOLO chair counting via `ultralytics` (COCO `chair`, `conf >= 0.35`)
-- State machine: `IDLE -> STREAMING -> BASELINED -> ARMED -> COOLDOWN`
-- Debounce: K consecutive discrepant frames (default `K=5`)
-- Cooldown: suppress new alerts for T seconds (default `T=10`)
-- Agent text generation:
-  - Primary: local Ollama at `http://localhost:11434`
-  - Fallback: deterministic templates (exact phrases required)
+- State machine: `IDLE → STREAMING → BASELINED → ARMED → COOLDOWN`
+- Debounce: K consecutive discrepant frames before alert (default `K=5`)
+- Cooldown: suppress repeat alerts for T seconds (default `T=10`)
+- Agent text generation via local Ollama (falls back to deterministic templates if unavailable)
 - SQLite event logging (`inventory_events.db`)
-- Phone web app with local Web Speech API TTS, visual banner fallback, optional vibration fallback
+- Phone web app with Web Speech API TTS, visual banner fallback, vibration fallback
+- HTTPS with auto-generated self-signed cert (camera requires HTTPS on mobile browsers)
 
 ## Project structure
+
 ```
-staging-inventory-v1/
+Instalily-winning-project/
   README.md
   requirements.txt
   server/
-    main.py
-    vision.py
-    agent.py
-    state.py
-    db.py
-    settings.py
+    main.py        # FastAPI app, WebSocket handler
+    vision.py      # YOLO chair detection
+    agent.py       # Alert text generation (Ollama + fallback)
+    state.py       # State machine
+    db.py          # SQLite event logging
+    settings.py    # Config via env vars
     static/
-      phone.html
-      phone.js
-      phone.css
-      dashboard.html
-      dashboard.js
-      dashboard.css
+      phone.html / phone.js / phone.css      # Mobile UI
+      dashboard.html / dashboard.js / dashboard.css  # Desktop dashboard
   scripts/
-    run_server.sh
+    run_server.sh  # One-command setup and start
+  models/
+    yolov8n.pt     # Downloaded automatically on first run
+  certs/           # Auto-generated, gitignored
 ```
 
-## Offline/LAN setup
-1. Connect phone and laptop to same private Wi-Fi/hotspot (no internet needed).
-2. Place a local YOLO weight file at `staging-inventory-v1/models/yolov8n.pt` (or set `YOLO_MODEL` to another local path).
-3. On laptop:
+## Optional: Ollama for richer alert messages
+
+Without Ollama the system uses deterministic fallback templates (fully functional).
+To enable AI-generated messages:
+
 ```bash
-cd staging-inventory-v1
-./scripts/run_server.sh
-```
-4. Open phone browser to:
-- `http://<LAPTOP_LAN_IP>:8000/`
-
-## Phone workflow
-1. Tap `Connect` (camera permission required).
-2. Tap `Start Stream`.
-3. Place scene with chairs and wait for stable count.
-4. Tap `Set Baseline`.
-5. Tap `Arm`.
-6. Remove/add chairs; alert triggers after debounce and is spoken on phone.
-
-## WebSocket protocol
-### Phone -> Laptop
-- `frame`
-```json
-{
-  "type": "frame",
-  "timestamp_ms": 1730000000000,
-  "jpeg_b64": "<base64 jpeg>",
-  "meta": {"w": 640, "h": 360}
-}
-```
-- `command`
-```json
-{"type":"command","command":"set_baseline|arm|disarm|reset|ping"}
+# Install Ollama from https://ollama.com
+ollama pull gemma2:2b
 ```
 
-### Laptop -> Phone
-- `status`
-```json
-{
-  "type": "status",
-  "state": "ARMED",
-  "chair_count": 4,
-  "baseline_count": 5,
-  "diff": -1,
-  "discrepancy_streak": 5,
-  "cooldown_remaining_sec": 9.8,
-  "average_conf": 0.74,
-  "k": 5,
-  "t_sec": 10
-}
-```
-- `alert`
-```json
-{
-  "type": "alert",
-  "baseline_count": 5,
-  "observed_count": 4,
-  "diff": -1,
-  "message": "Mr. Richard, one chair was removed."
-}
+The server auto-detects Ollama on `http://localhost:11434` and falls back gracefully if unavailable.
+
+## Config (environment variables)
+
+| Variable | Default | Description |
+|---|---|---|
+| `YOLO_MODEL` | `./models/yolov8n.pt` | Path to YOLO weights |
+| `CONF_THRESHOLD` | `0.35` | Detection confidence threshold |
+| `DEBOUNCE_K` | `5` | Frames before alert fires |
+| `COOLDOWN_SEC` | `10` | Seconds between alerts |
+| `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama endpoint |
+| `OLLAMA_MODEL` | `gemma2:2b` | Ollama model name |
+| `SQLITE_PATH` | `./inventory_events.db` | Event log path |
+
+Override any setting by passing it before the script:
+
+```bash
+CONF_THRESHOLD=0.2 DEBOUNCE_K=3 bash scripts/run_server.sh
 ```
 
-## Config (env vars)
-- `YOLO_MODEL` (default `./models/yolov8n.pt`, local file path)
-- `CONF_THRESHOLD` (default `0.35`)
-- `DEBOUNCE_K` (default `5`)
-- `COOLDOWN_SEC` (default `10`)
-- `OLLAMA_BASE_URL` (default `http://localhost:11434`)
-- `OLLAMA_MODEL` (default `gemma2:2b`)
-- `SQLITE_PATH` (default `./inventory_events.db`)
+## Troubleshooting
 
-## Notes
-- No external APIs are used.
-- If Ollama/model fails, exact deterministic templates are used.
-- If browser TTS is unavailable, large on-screen alert is shown; vibration used when supported.
+| Problem | Fix |
+|---|---|
+| Camera black / unavailable | Must use HTTPS — script handles this automatically |
+| Phone can't reach server | Make sure laptop is on phone hotspot, not public WiFi |
+| IP changed after reconnect | Re-run `scripts/run_server.sh` — it prints the current URL |
+| Low chair detection accuracy | Lower `CONF_THRESHOLD` to `0.2`, ensure good lighting |
+| Cert warning on phone | Tap Advanced → Proceed (one-time, self-signed cert) |
