@@ -109,7 +109,7 @@ cd staging-inventory-v1
 - `DEBOUNCE_K` (default `5`)
 - `COOLDOWN_SEC` (default `10`)
 - `OLLAMA_BASE_URL` (default `http://localhost:11434`)
-- `OLLAMA_MODEL` (default `gemma2:2b-instruct`)
+- `OLLAMA_MODEL` (default `gemma2:2b`)
 - `SQLITE_PATH` (default `./inventory_events.db`)
 
 ## Notes

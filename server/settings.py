@@ -22,7 +22,7 @@ class Settings:
 
     # Agent / Ollama
     ollama_base_url: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-    ollama_model: str = os.getenv("OLLAMA_MODEL", "gemma2:2b-instruct")
+    ollama_model: str = os.getenv("OLLAMA_MODEL", "gemma2:2b")
     ollama_timeout_sec: float = float(os.getenv("OLLAMA_TIMEOUT_SEC", "2.5"))
 
     # Persistence
