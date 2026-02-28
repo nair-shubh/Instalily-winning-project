@@ -127,8 +127,12 @@ function stopStreaming() {
 }
 
 connectBtn.addEventListener("click", async () => {
-  await initCamera();
   connectWS();
+  try {
+    await initCamera();
+  } catch (err) {
+    showBanner(`Camera unavailable: ${err.message}. Connect still attempted.`);
+  }
 });
 startBtn.addEventListener("click", startStreaming);
 stopBtn.addEventListener("click", stopStreaming);
