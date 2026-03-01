@@ -41,6 +41,7 @@ state_machine = InventoryStateMachine(
     debounce_k=settings.debounce_k,
     cooldown_sec=settings.cooldown_sec,
 )
+dashboard_clients: set[WebSocket] = set()
 
 # Fine-tuned Gemma agent (loads in background, falls back gracefully if unavailable)
 gemma_agent = GemmaAgent(
@@ -58,6 +59,11 @@ _history: list[int] = []  # rolling window of item counts for Gemma context
 
 
 @app.get("/")
+def landing_page() -> FileResponse:
+    return FileResponse(STATIC_DIR / "index.html")
+
+
+@app.get("/phone")
 def phone_app() -> FileResponse:
     return FileResponse(STATIC_DIR / "phone.html")
 
@@ -122,7 +128,9 @@ def _resize_for_model(frame: np.ndarray) -> np.ndarray:
     return cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_AREA)
 
 
-async def _send_status(ws: WebSocket, *, average_conf: float, timestamp_ms: int) -> None:
+async def _send_status(
+    ws: WebSocket, *, average_conf: float, timestamp_ms: int, detections: list[dict[str, float]]
+) -> None:
     diff = 0
     if state_machine.baseline_count is not None and state_machine.last_observed_count is not None:
         diff = state_machine.last_observed_count - state_machine.baseline_count
@@ -140,10 +148,48 @@ async def _send_status(ws: WebSocket, *, average_conf: float, timestamp_ms: int)
             "discrepancy_streak": state_machine.discrepancy_streak,
             "cooldown_remaining_sec": round(cooldown_remaining, 2),
             "average_conf": round(average_conf, 3),
+            "detections": detections,
             "k": settings.debounce_k,
             "t_sec": settings.cooldown_sec,
         }
     )
+
+
+def _activity_payload(
+    *,
+    timestamp_ms: int,
+    average_conf: float = 0.0,
+    detections: list[dict[str, float]] | None = None,
+) -> dict[str, Any]:
+    diff = 0
+    if state_machine.baseline_count is not None and state_machine.last_observed_count is not None:
+        diff = state_machine.last_observed_count - state_machine.baseline_count
+    cooldown_remaining = max(0.0, state_machine.cooldown_until_monotonic - time.monotonic())
+    return {
+        "type": "activity",
+        "timestamp_ms": timestamp_ms,
+        "state": state_machine.state,
+        "observed_count": state_machine.last_observed_count,
+        "baseline_count": state_machine.baseline_count,
+        "diff": diff,
+        "discrepancy_streak": state_machine.discrepancy_streak,
+        "cooldown_remaining_sec": round(cooldown_remaining, 2),
+        "average_conf": round(average_conf, 3),
+        "detections_count": len(detections or []),
+    }
+
+
+async def _broadcast_dashboard(payload: dict[str, Any]) -> None:
+    if not dashboard_clients:
+        return
+    dead: list[WebSocket] = []
+    for client in dashboard_clients:
+        try:
+            await client.send_json(payload)
+        except Exception:
+            dead.append(client)
+    for client in dead:
+        dashboard_clients.discard(client)
 
 
 async def _handle_command(ws: WebSocket, data: dict[str, Any]) -> None:
@@ -161,16 +207,51 @@ async def _handle_command(ws: WebSocket, data: dict[str, Any]) -> None:
             },
         )
         await ws.send_json({"type": "ack", "command": cmd, "ok": True})
+        await _broadcast_dashboard(
+            {
+                "type": "event",
+                "event": "baseline_set",
+                "timestamp_ms": int(time.time() * 1000),
+                "payload": {
+                    "baseline_count": state_machine.baseline_count,
+                    "observed_count": state_machine.last_observed_count,
+                },
+            }
+        )
     elif cmd == "arm":
         state_machine.arm()
         await ws.send_json({"type": "ack", "command": cmd, "ok": True})
+        await _broadcast_dashboard(
+            {
+                "type": "event",
+                "event": "arm",
+                "timestamp_ms": int(time.time() * 1000),
+                "payload": {},
+            }
+        )
     elif cmd == "disarm":
         state_machine.disarm()
         await ws.send_json({"type": "ack", "command": cmd, "ok": True})
+        await _broadcast_dashboard(
+            {
+                "type": "event",
+                "event": "disarm",
+                "timestamp_ms": int(time.time() * 1000),
+                "payload": {},
+            }
+        )
     elif cmd == "reset":
         state_machine.reset()
         db.log_event("reset", {})
         await ws.send_json({"type": "ack", "command": cmd, "ok": True})
+        await _broadcast_dashboard(
+            {
+                "type": "event",
+                "event": "reset",
+                "timestamp_ms": int(time.time() * 1000),
+                "payload": {},
+            }
+        )
     elif cmd == "ping":
         await ws.send_json({"type": "pong", "timestamp_ms": int(time.time() * 1000)})
     else:
@@ -218,7 +299,37 @@ async def ws_endpoint(ws: WebSocket) -> None:
                 if len(_history) > 20:
                     _history = _history[-20:]
 
-                await _send_status(ws, average_conf=vision.average_conf, timestamp_ms=timestamp_ms)
+                await _send_status(
+                    ws,
+                    average_conf=vision.average_conf,
+                    timestamp_ms=timestamp_ms,
+                    detections=[
+                        {
+                            "x1_norm": det.x1_norm,
+                            "y1_norm": det.y1_norm,
+                            "x2_norm": det.x2_norm,
+                            "y2_norm": det.y2_norm,
+                            "conf": det.conf,
+                        }
+                        for det in vision.detections
+                    ],
+                )
+                await _broadcast_dashboard(
+                    _activity_payload(
+                        timestamp_ms=timestamp_ms,
+                        average_conf=vision.average_conf,
+                        detections=[
+                            {
+                                "x1_norm": det.x1_norm,
+                                "y1_norm": det.y1_norm,
+                                "x2_norm": det.x2_norm,
+                                "y2_norm": det.y2_norm,
+                                "conf": det.conf,
+                            }
+                            for det in vision.detections
+                        ],
+                    )
+                )
 
                 # Gemma reasoning every N frames (async, non-blocking)
                 _frame_counter += 1
@@ -300,6 +411,13 @@ async def ws_endpoint(ws: WebSocket) -> None:
                     }
                     db.log_event("alert", event_payload)
                     await ws.send_json({"type": "alert", **event_payload})
+                    await _broadcast_dashboard(
+                        {
+                            "type": "alert",
+                            "timestamp_ms": int(time.time() * 1000),
+                            **event_payload,
+                        }
+                    )
 
             elif msg_type == "command":
                 await _handle_command(ws, data)
@@ -308,3 +426,22 @@ async def ws_endpoint(ws: WebSocket) -> None:
 
     except WebSocketDisconnect:
         return
+
+
+@app.websocket("/ws/dashboard")
+async def ws_dashboard(ws: WebSocket) -> None:
+    await ws.accept()
+    dashboard_clients.add(ws)
+    await ws.send_json(
+        _activity_payload(
+            timestamp_ms=int(time.time() * 1000),
+            average_conf=0.0,
+            detections=[],
+        )
+    )
+    try:
+        while True:
+            # Keep socket alive; dashboard is receive-optional.
+            await ws.receive_text()
+    except WebSocketDisconnect:
+        dashboard_clients.discard(ws)
