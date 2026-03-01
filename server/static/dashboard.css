@@ -1,19 +1,99 @@
 body {
   margin: 0;
-  padding: 24px;
-  font-family: "IBM Plex Sans", sans-serif;
-  background: #0e1418;
-  color: #d8e3ea;
+  font-family: "Avenir Next", "Segoe UI", sans-serif;
+  background: radial-gradient(circle at top, #ffffff, #edf1e6 65%, #e6ebdf);
+  color: #1e2528;
 }
 
-h1, h2 {
+.shell {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 22px 22px 28px;
+}
+
+.top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+h1 {
+  margin: 0;
+  font-family: "Avenir Next", "Futura", "Gill Sans", sans-serif;
+  font-size: 1.6rem;
+  letter-spacing: 0.02em;
+}
+
+h2 {
   margin: 0 0 12px;
+  font-size: 1.02rem;
+  letter-spacing: 0.01em;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.card {
+  background: #ffffff;
+  border: 1px solid #d6ddcb;
+  border-radius: 14px;
+  padding: 14px 15px;
+  box-shadow: 0 8px 18px rgba(16, 24, 18, 0.08);
+}
+
+.pill {
+  border-radius: 999px;
+  padding: 7px 12px;
+  font-weight: 700;
+  font-size: 0.8rem;
+}
+
+.good {
+  background: #e6f5ec;
+  color: #165a2d;
+}
+
+.bad {
+  background: #ffe9e9;
+  color: #a92323;
+}
+
+.kv {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 4px 0;
 }
 
 pre {
-  background: #111c23;
-  border: 1px solid #203541;
+  margin: 0;
+  background: #f9fbf6;
+  border: 1px solid #d9e1ce;
   border-radius: 10px;
-  padding: 12px;
+  padding: 10px;
+  white-space: pre-wrap;
+  color: #24313a;
+}
+
+.feed {
+  margin: 0;
+  padding-left: 18px;
+  max-height: 220px;
   overflow: auto;
+}
+
+.feed li {
+  margin: 0 0 8px;
+  color: #2b3a3f;
+}
+
+@media (max-width: 760px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
 }

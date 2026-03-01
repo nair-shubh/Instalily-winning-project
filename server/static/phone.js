@@ -1,6 +1,8 @@
 const video = document.getElementById("video");
 const canvas = document.getElementById("captureCanvas");
 const ctx = canvas.getContext("2d");
+const overlayCanvas = document.getElementById("overlayCanvas");
+const overlayCtx = overlayCanvas.getContext("2d");
 const alertBanner = document.getElementById("alertBanner");
 
 const stateEl = document.getElementById("state");
@@ -32,6 +34,38 @@ function setNetwork(text, ok) {
 function showBanner(msg) {
   alertBanner.textContent = msg;
   alertBanner.classList.remove("hidden");
+}
+
+function syncOverlaySize() {
+  const w = video.videoWidth || 640;
+  const h = video.videoHeight || 360;
+  if (overlayCanvas.width !== w || overlayCanvas.height !== h) {
+    overlayCanvas.width = w;
+    overlayCanvas.height = h;
+  }
+}
+
+function drawDetections(detections) {
+  syncOverlaySize();
+  overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+  overlayCtx.lineWidth = 3;
+  overlayCtx.strokeStyle = "#37ff7f";
+  overlayCtx.fillStyle = "#37ff7f";
+  overlayCtx.font = "14px Avenir Next, sans-serif";
+  for (const det of detections || []) {
+    const x1 = det.x1_norm * overlayCanvas.width;
+    const y1 = det.y1_norm * overlayCanvas.height;
+    const x2 = det.x2_norm * overlayCanvas.width;
+    const y2 = det.y2_norm * overlayCanvas.height;
+    const w = Math.max(1, x2 - x1);
+    const h = Math.max(1, y2 - y1);
+    overlayCtx.strokeRect(x1, y1, w, h);
+    const label = `cup ${(det.conf * 100).toFixed(0)}%`;
+    overlayCtx.fillRect(x1, Math.max(0, y1 - 18), 86, 18);
+    overlayCtx.fillStyle = "#00110a";
+    overlayCtx.fillText(label, x1 + 4, Math.max(13, y1 - 5));
+    overlayCtx.fillStyle = "#37ff7f";
+  }
 }
 
 function speakOrFallback(msg) {
@@ -71,6 +105,7 @@ function connectWS() {
       chairCountEl.textContent = msg.chair_count ?? "-";
       baselineCountEl.textContent = msg.baseline_count ?? "-";
       diffEl.textContent = msg.diff;
+      drawDetections(msg.detections || []);
     } else if (msg.type === "alert") {
       speakOrFallback(msg.message);
     } else if (msg.type === "error") {
@@ -88,8 +123,8 @@ function sendFrame() {
   if (!ws || ws.readyState !== WebSocket.OPEN) return;
   if (!video.videoWidth || !video.videoHeight) return;
 
-  const targetW = 640;
-  const targetH = 360;
+  const targetW = 960;
+  const targetH = 540;
   canvas.width = targetW;
   canvas.height = targetH;
   ctx.drawImage(video, 0, 0, targetW, targetH);
@@ -117,6 +152,7 @@ function stopStreaming() {
   clearInterval(frameTimer);
   frameTimer = null;
   startBtn.textContent = "Start Stream";
+  drawDetections([]);
 }
 
 connectBtn.addEventListener("click", async () => {
