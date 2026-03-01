@@ -5,3 +5,4 @@ inventory_events.db
 yolov8n.pt
 models/*.pt
 !models/.gitkeep
+models/gemma-agent/
