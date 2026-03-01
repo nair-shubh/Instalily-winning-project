@@ -5,14 +5,14 @@ import httpx
 
 def deterministic_alert_text(diff: int) -> str:
     if diff == -1:
-        return "Mr. Richard, one chair was removed."
+        return "Mr. Richard, one cup was removed."
     if diff < -1:
-        return f"Mr. Richard, {abs(diff)} chairs were removed."
+        return f"Mr. Richard, {abs(diff)} cups were removed."
     if diff == 1:
-        return "Mr. Richard, one chair was added."
+        return "Mr. Richard, one cup was added."
     if diff > 1:
-        return f"Mr. Richard, {diff} chairs were added."
-    return "Mr. Richard, chair count is unchanged."
+        return f"Mr. Richard, {diff} cups were added."
+    return "Mr. Richard, cup count is unchanged."
 
 
 class AlertAgent:

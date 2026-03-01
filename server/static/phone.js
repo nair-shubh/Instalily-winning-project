@@ -7,17 +7,10 @@ const stateEl = document.getElementById("state");
 const chairCountEl = document.getElementById("chairCount");
 const baselineCountEl = document.getElementById("baselineCount");
 const diffEl = document.getElementById("diff");
-const avgConfEl = document.getElementById("avgConf");
-const streakEl = document.getElementById("streak");
-const cooldownEl = document.getElementById("cooldown");
-const networkEl = document.getElementById("network");
 
 const connectBtn = document.getElementById("connectBtn");
 const startBtn = document.getElementById("startBtn");
-const stopBtn = document.getElementById("stopBtn");
 const baselineBtn = document.getElementById("baselineBtn");
-const armBtn = document.getElementById("armBtn");
-const disarmBtn = document.getElementById("disarmBtn");
 const resetBtn = document.getElementById("resetBtn");
 
 let ws = null;
@@ -31,8 +24,9 @@ function wsUrl() {
 }
 
 function setNetwork(text, ok) {
-  networkEl.textContent = text;
-  networkEl.className = ok ? "good" : "bad";
+  // Network indicator was intentionally removed from the compact V1 UI.
+  void text;
+  void ok;
 }
 
 function showBanner(msg) {
@@ -77,9 +71,6 @@ function connectWS() {
       chairCountEl.textContent = msg.chair_count ?? "-";
       baselineCountEl.textContent = msg.baseline_count ?? "-";
       diffEl.textContent = msg.diff;
-      avgConfEl.textContent = Number(msg.average_conf || 0).toFixed(3);
-      streakEl.textContent = `${msg.discrepancy_streak}/${msg.k}`;
-      cooldownEl.textContent = `${Number(msg.cooldown_remaining_sec || 0).toFixed(1)}s`;
     } else if (msg.type === "alert") {
       speakOrFallback(msg.message);
     } else if (msg.type === "error") {
@@ -118,12 +109,14 @@ function sendFrame() {
 function startStreaming() {
   if (frameTimer) return;
   frameTimer = setInterval(sendFrame, 1000 / fps);
+  startBtn.textContent = "Stop Stream";
 }
 
 function stopStreaming() {
   if (!frameTimer) return;
   clearInterval(frameTimer);
   frameTimer = null;
+  startBtn.textContent = "Start Stream";
 }
 
 connectBtn.addEventListener("click", async () => {
@@ -134,9 +127,19 @@ connectBtn.addEventListener("click", async () => {
     showBanner(`Camera unavailable: ${err.message}. Connect still attempted.`);
   }
 });
-startBtn.addEventListener("click", startStreaming);
-stopBtn.addEventListener("click", stopStreaming);
-baselineBtn.addEventListener("click", () => sendCommand("set_baseline"));
-armBtn.addEventListener("click", () => sendCommand("arm"));
-disarmBtn.addEventListener("click", () => sendCommand("disarm"));
-resetBtn.addEventListener("click", () => sendCommand("reset"));
+startBtn.addEventListener("click", () => {
+  if (frameTimer) {
+    stopStreaming();
+    sendCommand("reset");
+    return;
+  }
+  startStreaming();
+});
+baselineBtn.addEventListener("click", () => {
+  sendCommand("set_baseline");
+  sendCommand("arm");
+});
+resetBtn.addEventListener("click", () => {
+  stopStreaming();
+  sendCommand("reset");
+});

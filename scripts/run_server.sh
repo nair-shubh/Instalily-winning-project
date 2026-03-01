@@ -13,6 +13,21 @@ source .venv/bin/activate
 pip install --upgrade pip -q
 pip install -r requirements.txt -q
 
+# Ensure torch can consume numpy arrays in this environment.
+if ! python3 - <<'PYEOF'
+import sys
+try:
+    import numpy as np
+    import torch
+    _ = torch.from_numpy(np.zeros((1, 1), dtype=np.float32))
+except Exception:
+    sys.exit(1)
+PYEOF
+then
+  echo "Fixing NumPy/OpenCV compatibility for torch..."
+  pip install --upgrade --force-reinstall numpy==1.26.4 opencv-python==4.10.0.84 -q
+fi
+
 # ── YOLO model ─────────────────────────────────────────────────────────────────
 if [[ ! -f models/yolov8n.pt ]]; then
   echo "Downloading YOLOv8n model..."
