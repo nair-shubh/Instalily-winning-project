@@ -28,5 +28,12 @@ class Settings:
     # Persistence
     sqlite_path: str = os.getenv("SQLITE_PATH", "./inventory_events.db")
 
+    # Gemma agent (optional — falls back to rule-based if not set)
+    gemma_base_model: str = os.getenv("GEMMA_BASE_MODEL", "google/gemma-2-2b-it")
+    gemma_adapter_path: str = os.getenv("GEMMA_ADAPTER_PATH", "./models/gemma-agent/final")
+    gemma_hf_token: str | None = os.getenv("HF_TOKEN", None)
+    gemma_enabled: bool = os.getenv("GEMMA_ENABLED", "true").lower() == "true"
+    gemma_every_n_frames: int = int(os.getenv("GEMMA_EVERY_N_FRAMES", "10"))
+
 
 settings = Settings()

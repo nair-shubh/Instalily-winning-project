@@ -13,6 +13,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .agent import AlertAgent
+from .agent_gemma import GemmaAgent
 from .db import EventDB
 from .settings import settings
 from .state import InventoryStateMachine
@@ -41,9 +42,19 @@ state_machine = InventoryStateMachine(
     cooldown_sec=settings.cooldown_sec,
 )
 
+# Fine-tuned Gemma agent (loads in background, falls back gracefully if unavailable)
+gemma_agent = GemmaAgent(
+    base_model_id=settings.gemma_base_model,
+    adapter_path=settings.gemma_adapter_path,
+    hf_token=settings.gemma_hf_token,
+)
+if settings.gemma_enabled:
+    gemma_agent.load_async()
+
 # Sample every Nth frame for observation logging to avoid DB bloat
 _OBS_SAMPLE_EVERY = 3
 _frame_counter: int = 0
+_history: list[int] = []  # rolling window of item counts for Gemma context
 
 
 @app.get("/")
@@ -168,13 +179,14 @@ async def _handle_command(ws: WebSocket, data: dict[str, Any]) -> None:
 
 @app.websocket("/ws")
 async def ws_endpoint(ws: WebSocket) -> None:
-    global _frame_counter
+    global _frame_counter, _history
     await ws.accept()
 
     # Send config immediately so phone knows what object is being tracked
     await ws.send_json({
         "type": "config",
         "tracked_class": settings.chair_class_name,
+        "gemma_ready": gemma_agent.is_ready,
     })
 
     try:
@@ -201,10 +213,69 @@ async def ws_endpoint(ws: WebSocket) -> None:
                 vision = chair_counter.count_chairs(frame)
                 evaluation = state_machine.evaluate(vision.chair_count)
 
+                # Maintain rolling history for Gemma context
+                _history.append(vision.chair_count)
+                if len(_history) > 20:
+                    _history = _history[-20:]
+
                 await _send_status(ws, average_conf=vision.average_conf, timestamp_ms=timestamp_ms)
 
-                # Log observation sampled every N frames
+                # Gemma reasoning every N frames (async, non-blocking)
                 _frame_counter += 1
+                if (
+                    settings.gemma_enabled
+                    and gemma_agent.is_ready
+                    and evaluation.baseline_count is not None
+                    and evaluation.discrepancy_streak > 0
+                    and _frame_counter % settings.gemma_every_n_frames == 0
+                ):
+                    def _on_gemma_decision(decision, ws=ws, evaluation=evaluation):
+                        import asyncio
+                        payload = {
+                            "type": "gemma_decision",
+                            "action": decision.action,
+                            "raw_output": decision.raw_output,
+                        }
+                        if decision.action == "trigger_alert":
+                            payload["severity"] = decision.severity
+                            payload["message"] = decision.message
+                            db.log_event("gemma_alert", {
+                                "action": decision.action,
+                                "severity": decision.severity,
+                                "message": decision.message,
+                                "raw_output": decision.raw_output,
+                                "streak": evaluation.discrepancy_streak,
+                            })
+                        elif decision.action == "rebaseline":
+                            payload["new_count"] = decision.new_count
+                            db.log_event("gemma_rebaseline", {
+                                "new_count": decision.new_count,
+                                "raw_output": decision.raw_output,
+                            })
+                        elif decision.action == "ignore_event":
+                            payload["reason"] = decision.reason
+                            db.log_event("gemma_ignore", {
+                                "reason": decision.reason,
+                                "raw_output": decision.raw_output,
+                            })
+                        try:
+                            loop = asyncio.get_event_loop()
+                            loop.call_soon_threadsafe(
+                                lambda: asyncio.ensure_future(ws.send_json(payload))
+                            )
+                        except Exception:
+                            pass
+
+                    gemma_agent.decide_async(
+                        item_count=vision.chair_count,
+                        baseline_count=evaluation.baseline_count,
+                        streak=evaluation.discrepancy_streak,
+                        avg_conf=vision.average_conf,
+                        history=list(_history),
+                        callback=_on_gemma_decision,
+                    )
+
+                # Log observation sampled every N frames
                 if _frame_counter % _OBS_SAMPLE_EVERY == 0:
                     db.log_observation(
                         state=str(evaluation.state),
