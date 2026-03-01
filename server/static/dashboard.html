@@ -3,15 +3,44 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Inventory Dashboard</title>
+  <title>Agent Activity Dashboard</title>
   <link rel="stylesheet" href="/static/dashboard.css" />
 </head>
 <body>
-  <main>
-    <h1>Laptop Dashboard</h1>
-    <pre id="health"></pre>
-    <h2>Recent Events</h2>
-    <pre id="events"></pre>
+  <main class="shell">
+    <header class="top">
+      <h1>Agent Activity Dashboard</h1>
+      <div id="wsStatus" class="pill bad">Disconnected</div>
+    </header>
+
+    <section class="grid">
+      <article class="card">
+        <h2>Live Agent Status</h2>
+        <div class="kv"><span>State</span><strong id="state">-</strong></div>
+        <div class="kv"><span>Observed</span><strong id="observed">-</strong></div>
+        <div class="kv"><span>Baseline</span><strong id="baseline">-</strong></div>
+        <div class="kv"><span>Diff</span><strong id="diff">0</strong></div>
+        <div class="kv"><span>Detections</span><strong id="detections">0</strong></div>
+        <div class="kv"><span>Last Update</span><strong id="lastUpdate">-</strong></div>
+      </article>
+
+      <article class="card">
+        <h2>Current Inventory Snapshot</h2>
+        <pre id="snapshot">Waiting for activity...</pre>
+      </article>
+    </section>
+
+    <section class="grid">
+      <article class="card">
+        <h2>Recent Alerts</h2>
+        <ul id="alerts" class="feed"></ul>
+      </article>
+
+      <article class="card">
+        <h2>Event Timeline</h2>
+        <ul id="timeline" class="feed"></ul>
+      </article>
+    </section>
   </main>
   <script src="/static/dashboard.js"></script>
 </body>

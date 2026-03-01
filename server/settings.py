@@ -10,11 +10,11 @@ class Settings:
     # Vision tuning
     yolo_model: str = os.getenv("YOLO_MODEL", "./models/yolov8n.pt")
     chair_class_name: str = os.getenv("CHAIR_CLASS_NAME", "cup")
-    conf_threshold: float = float(os.getenv("CONF_THRESHOLD", "0.35"))
+    conf_threshold: float = float(os.getenv("CONF_THRESHOLD", "0.20"))
 
     # Streaming controls
-    max_frame_width: int = int(os.getenv("MAX_FRAME_WIDTH", "640"))
-    max_frame_height: int = int(os.getenv("MAX_FRAME_HEIGHT", "360"))
+    max_frame_width: int = int(os.getenv("MAX_FRAME_WIDTH", "960"))
+    max_frame_height: int = int(os.getenv("MAX_FRAME_HEIGHT", "540"))
 
     # State machine defaults
     debounce_k: int = int(os.getenv("DEBOUNCE_K", "5"))
