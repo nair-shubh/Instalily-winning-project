@@ -9,7 +9,7 @@ class Settings:
 
     # Vision tuning
     yolo_model: str = os.getenv("YOLO_MODEL", "./models/yolov8n.pt")
-    chair_class_name: str = os.getenv("CHAIR_CLASS_NAME", "cup")
+    chair_class_name: str = os.getenv("CHAIR_CLASS_NAME", "chair")
     conf_threshold: float = float(os.getenv("CONF_THRESHOLD", "0.20"))
 
     # Streaming controls
